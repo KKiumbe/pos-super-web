@@ -31,6 +31,12 @@ type PlatformUser = {
   } | null;
 };
 
+type ActivityNotice = {
+  id: number;
+  tone: "success" | "warning" | "info";
+  text: string;
+};
+
 const storageKey = "tableflow-control-session";
 
 function formatCurrency(amount: number | null | undefined) {
@@ -71,8 +77,34 @@ export function ControlWorkspace() {
   const [monthlyCharge, setMonthlyCharge] = useState("15000");
   const [billingDay, setBillingDay] = useState("5");
   const [brandColor, setBrandColor] = useState("#114b5f");
+  const [notices, setNotices] = useState<ActivityNotice[]>([]);
+  const [busyActions, setBusyActions] = useState<Record<string, boolean>>({});
   const [isPending, startTransition] = useTransition();
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  function showNotice(text: string, tone: "success" | "warning" | "info") {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setNotices((current) => [...current.slice(-3), { id, text, tone }]);
+    window.setTimeout(() => {
+      setNotices((current) => current.filter((notice) => notice.id !== id));
+    }, 3600);
+  }
+
+  function startAction(actionKey: string, text: string) {
+    setBusyActions((current) => ({ ...current, [actionKey]: true }));
+    setMessage(text);
+    showNotice(text, "info");
+  }
+
+  function finishAction(actionKey: string, text: string, tone: "success" | "warning" | "info") {
+    setBusyActions((current) => {
+      const next = { ...current };
+      delete next[actionKey];
+      return next;
+    });
+    setMessage(text);
+    showNotice(text, tone);
+  }
 
   useEffect(() => {
     const stored = window.localStorage.getItem(storageKey);
@@ -138,7 +170,10 @@ export function ControlWorkspace() {
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Signing in...");
+    if (busyActions.login) {
+      return;
+    }
+    startAction("login", "Signing in...");
 
     startTransition(async () => {
       try {
@@ -154,8 +189,9 @@ export function ControlWorkspace() {
         setSession(login);
         setToken(login.token);
         window.localStorage.setItem(storageKey, JSON.stringify({ ...login, token: login.token }));
+        finishAction("login", "Signed in successfully.", "success");
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Sign in failed.");
+        finishAction("login", error instanceof Error ? error.message : "Sign in failed.", "warning");
       }
     });
   }
@@ -165,8 +201,12 @@ export function ControlWorkspace() {
     if (!token) {
       return;
     }
+    if (busyActions.createRestaurant) {
+      return;
+    }
 
     try {
+      startAction("createRestaurant", "Creating tenant...");
       await apiRequest(
         "/admin/restaurants",
         {
@@ -196,10 +236,10 @@ export function ControlWorkspace() {
       setManagerLastName("");
       setManagerEmail("");
       setManagerPassword("");
-      setMessage("Tenant created.");
       await loadData(token);
+      finishAction("createRestaurant", "Tenant created successfully.", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to create tenant.");
+      finishAction("createRestaurant", error instanceof Error ? error.message : "Unable to create tenant.", "warning");
     }
   }
 
@@ -207,8 +247,13 @@ export function ControlWorkspace() {
     if (!token) {
       return;
     }
+    const actionKey = `toggle-user-${userId}`;
+    if (busyActions[actionKey]) {
+      return;
+    }
 
     try {
+      startAction(actionKey, "Updating user access...");
       await apiRequest(
         `/admin/users/${userId}/status`,
         {
@@ -218,10 +263,10 @@ export function ControlWorkspace() {
         token
       );
 
-      setMessage("User status updated.");
       await loadData(token);
+      finishAction(actionKey, "User status updated.", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update user.");
+      finishAction(actionKey, error instanceof Error ? error.message : "Unable to update user.", "warning");
     }
   }
 
@@ -330,8 +375,8 @@ export function ControlWorkspace() {
                   placeholder="••••••••"
                 />
               </label>
-              <button type="submit" disabled={isPending} className="auth-submit-btn">
-                {isPending ? "Signing in..." : "Enter control panel"}
+              <button type="submit" disabled={isPending || busyActions.login} className="auth-submit-btn">
+                {isPending || busyActions.login ? "Signing in..." : "Enter control panel"}
               </button>
             </form>
 
@@ -409,6 +454,17 @@ export function ControlWorkspace() {
         <span className="status-pill">{isPending ? "Refreshing" : "Stable"}</span>
       </section>
 
+      {notices.length ? (
+        <section className="activity-stack" aria-live="polite" aria-label="Recent activity">
+          {notices.map((notice) => (
+            <div key={notice.id} className="activity-toast" data-tone={notice.tone}>
+              <strong>{notice.tone === "info" ? "Working" : notice.tone === "success" ? "Success" : "Attention"}</strong>
+              <p>{notice.text}</p>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       <section className="stat-strip">
         <div className="stat-chip">
           <span>Revenue base</span>
@@ -485,7 +541,9 @@ export function ControlWorkspace() {
               Brand color
               <input value={brandColor} onChange={(event) => setBrandColor(event.target.value)} />
             </label>
-            <button type="submit">Create tenant</button>
+            <button type="submit" disabled={busyActions.createRestaurant}>
+              {busyActions.createRestaurant ? "Creating..." : "Create tenant"}
+            </button>
           </form>
         </article>
 
@@ -541,8 +599,8 @@ export function ControlWorkspace() {
                   {user.email} · {user.tenant?.name ?? "No tenant"} · {user.tenant?.slug ?? "-"}
                 </p>
                 <div className="inline-actions">
-                  <button onClick={() => void toggleUser(user.id, user.isActive)}>
-                    {user.isActive ? "Disable user" : "Enable user"}
+                  <button disabled={busyActions[`toggle-user-${user.id}`]} onClick={() => void toggleUser(user.id, user.isActive)}>
+                    {busyActions[`toggle-user-${user.id}`] ? "Saving..." : user.isActive ? "Disable user" : "Enable user"}
                   </button>
                 </div>
               </div>

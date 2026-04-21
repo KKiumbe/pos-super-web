@@ -258,6 +258,49 @@ textarea:focus-visible {
   color: var(--muted);
 }
 
+.activity-stack {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 80;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+}
+
+.activity-toast {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 252, 245, 0.96);
+  box-shadow: 0 18px 40px rgba(22, 32, 42, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.activity-toast strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.activity-toast p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.activity-toast[data-tone="success"] {
+  border-color: rgba(34, 111, 84, 0.24);
+  background: rgba(241, 249, 245, 0.96);
+}
+
+.activity-toast[data-tone="warning"] {
+  border-color: rgba(195, 125, 43, 0.24);
+  background: rgba(255, 246, 234, 0.97);
+}
+
+.activity-toast[data-tone="info"] {
+  border-color: rgba(17, 75, 95, 0.2);
+}
+
 .status-banner strong,
 .panel-head h2 {
   display: block;
